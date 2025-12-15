@@ -206,20 +206,23 @@ function createHeartPhoto() {
   // Frame mảnh quanh ảnh
   const frameSize = 120;
   const frameGeo = new THREE.PlaneGeometry(frameSize, frameSize);
-  const frameMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const frameMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
   const frame = new THREE.Mesh(frameGeo, frameMat);
   group.add(frame);
 
   // Ảnh baoanh.jpg ở giữa
   const loader = new THREE.TextureLoader();
-  loader.load('baoanh.jpg', tex => {
+  loader.setCrossOrigin('anonymous');
+  loader.load('/baoanh.jpg', tex => {
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     const photoGeo = new THREE.PlaneGeometry(110, 110);
     const photoMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
     const photo = new THREE.Mesh(photoGeo, photoMat);
-    photo.position.set(0, 0, 0.1); // hơi nhô ra để không trùng frame
+    photo.position.set(0, 0, 0.2); // hơi nhô ra để không trùng frame
     group.add(photo);
+  }, undefined, err => {
+    console.warn('Load baoanh.jpg failed', err);
   });
 
   group.visible = false;
