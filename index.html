@@ -64,6 +64,8 @@ let handOpen = false;
 let handPos = new THREE.Vector3(0, 0, 0);
 let time = 0;
 let isRunning = false;
+let heartPhotoGroup = null;
+const heartPhotoTarget = new THREE.Vector3();
 const statusMsg = document.getElementById('status-msg');
 const snowCount = 2000;
 
@@ -197,6 +199,34 @@ function generateSnow() {
   }
 }
 
+// --- ẢNH TRONG TIM ---
+function createHeartPhoto() {
+  const group = new THREE.Group();
+
+  // Frame mảnh quanh ảnh
+  const frameSize = 120;
+  const frameGeo = new THREE.PlaneGeometry(frameSize, frameSize);
+  const frameMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const frame = new THREE.Mesh(frameGeo, frameMat);
+  group.add(frame);
+
+  // Ảnh baoanh.jpg ở giữa
+  const loader = new THREE.TextureLoader();
+  loader.load('baoanh.jpg', tex => {
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    const photoGeo = new THREE.PlaneGeometry(110, 110);
+    const photoMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    const photo = new THREE.Mesh(photoGeo, photoMat);
+    photo.position.set(0, 0, 0.1); // hơi nhô ra để không trùng frame
+    group.add(photo);
+  });
+
+  group.visible = false;
+  scene.add(group);
+  heartPhotoGroup = group;
+}
+
 // --- THREE.JS SETUP ---
 function initThree() {
   const container = document.getElementById('canvas-container');
@@ -215,6 +245,9 @@ function initThree() {
 
   generateTargets();
   generateSnow();
+
+  // Ảnh tim
+  createHeartPhoto();
 
   const geom = new THREE.BufferGeometry();
   const totalParticles = CONFIG.particleCount + snowCount;
@@ -328,6 +361,17 @@ function animate() {
     colors[i3+2] += (tb - colors[i3+2]) * lerpVal;
     
     sizes[i] += (ts - sizes[i]) * lerpVal;
+  }
+
+  // Ảnh ở giữa tim
+  if(heartPhotoGroup) {
+    heartPhotoGroup.visible = handOpen;
+    const targetY = handPos.y + 120 * beat; // tim đã dịch lên 120
+    heartPhotoTarget.set(handPos.x, targetY, handPos.z);
+    heartPhotoGroup.position.lerp(heartPhotoTarget, 0.08);
+    const photoScale = 0.9 * beat;
+    heartPhotoGroup.scale.set(photoScale, photoScale, photoScale);
+    heartPhotoGroup.lookAt(camera.position);
   }
 
   // Update snow particles
