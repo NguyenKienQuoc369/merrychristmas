@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Cây Thông & Trái Tim Chuẩn - Bao Anh</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #02020a; font-family: 'Arial', sans-serif; }
+    #canvas-container { width: 100%; height: 100vh; background: radial-gradient(circle at center bottom, #1b2949 0%, #000000 90%); }
+    #start-screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.95); z-index: 100; display: flex;
+      flex-direction: column; justify-content: center; align-items: center; color: #fff;
+    }
+    #start-btn {
+      padding: 15px 50px; font-size: 24px; background: #e60023; color: #fff; font-weight: bold;
+      border: none; border-radius: 50px; cursor: pointer; margin-top: 20px;
+      box-shadow: 0 0 20px #ff0000; transition: transform 0.2s;
+    }
+    #start-btn:hover { transform: scale(1.1); background: #ff1a1a; }
+    #status-container { position: absolute; top: 30px; width: 100%; text-align: center; pointer-events: none; z-index: 50; }
+    #status-msg {
+      display: inline-block; background: rgba(0, 0, 0, 0.6); padding: 10px 30px;
+      border-radius: 30px; color: #00ffcc; font-size: 24px; font-weight: bold;
+      border: 1px solid rgba(255,255,255,0.3); text-shadow: 0 0 10px rgba(0,255,204,0.8);
+    }
+  </style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1 style="text-shadow: 0 0 20px gold;">🎄 GIÁNG SINH & TÌNH YÊU ❤️</h1>
+  <p>Đã sửa dáng trái tim chuẩn & nâng cây thông</p>
+  <button id="start-btn">BẮT ĐẦU</button>
+</div>
+
+<div id="status-container"><div id="status-msg">Bấm BẮT ĐẦU nhé...</div></div>
+<div id="canvas-container"></div>
+<video id="input-video" style="display:none" playsinline></video>
+
+<script>
+// --- CẤU HÌNH ---
+const CONFIG = {
+  particleCount: 18000,
+  treeHeight: 280,   // Chiều cao cây
+  treeBaseRadius: 130,
+  trunkHeight: 40,
+  colors: {
+    leaf: new THREE.Color(0x0f6e2b),
+    leafLight: new THREE.Color(0x38ff75),
+    trunk: new THREE.Color(0x5c3a1d),
+    star: new THREE.Color(0xffff00),
+    heart: new THREE.Color(0xff0000), // Đỏ tươi
+    lights: [0xff0000, 0xffff00, 0x0088ff, 0xff00ff].map(c => new THREE.Color(c))
+  }
+};
+
+let scene, camera, renderer, particleSystem;
+let treeData = [], heartData = [], snowData = [];
+let handOpen = false;
+let handPos = new THREE.Vector3(0, 0, 0);
+let time = 0;
+let isRunning = false;
+const statusMsg = document.getElementById('status-msg');
+const snowCount = 2000;
+
+// --- TEXTURE ĐỐM SÁNG ---
+function createGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(16,16,0, 16,16,16);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,32,32);
+  return new THREE.CanvasTexture(canvas);
+}
+
+// --- TẠO DỮ LIỆU ---
+function generateTargets() {
+  treeData = []; heartData = [];
+  
+  // 1. CÂY THÔNG (Đã nâng cao vị trí)
+  const treeStartY = -100; // Đẩy lên cao hơn (bản cũ là -160)
+
+  // Gốc cây
+  for(let i=0; i<1000; i++) {
+    const h = Math.random() * CONFIG.trunkHeight;
+    const r = Math.sqrt(Math.random()) * 25;
+    const a = Math.random() * Math.PI * 2;
+    treeData.push({
+      x: Math.cos(a)*r, y: treeStartY + h, z: Math.sin(a)*r,
+      c: CONFIG.colors.trunk, s: 6
+    });
+  }
+
+  // Lá cây
+  const foliageCount = CONFIG.particleCount - 1000 - 100;
+  for(let i=0; i<foliageCount; i++) {
+    const p = i / foliageCount; // 0 (đáy) -> 1 (đỉnh)
+    const h = p * CONFIG.treeHeight;
+    const rBase = CONFIG.treeBaseRadius * (1 - p);
+    const r = Math.sqrt(Math.random()) * rBase * (0.8 + Math.random()*0.4); // Tán lá xòe tự nhiên
+    const a = i * 2.4; // Góc vàng
+
+    const x = Math.cos(a)*r;
+    const z = Math.sin(a)*r;
+    const y = treeStartY + CONFIG.trunkHeight + h - 10;
+
+    let c = CONFIG.colors.leaf;
+    let s = 4;
+    let isLight = false;
+
+    // 10% là đèn
+    if(Math.random() < 0.1) {
+      c = CONFIG.colors.lights[Math.floor(Math.random()*CONFIG.colors.lights.length)];
+      s = 10;
+      isLight = true;
+    } else {
+       // Màu lá random nhẹ
+       c = Math.random() > 0.5 ? CONFIG.colors.leaf : CONFIG.colors.leafLight;
+    }
+
+    treeData.push({ x, y, z, c, s, isLight });
+  }
+
+  // Sao đỉnh - 3 particles gom sát nhau ở đúng đỉnh
+  for(let i=0; i<3; i++) {
+    treeData.push({
+      x: (Math.random()-0.5)*1.5,  // Rất sát nhau
+      y: treeStartY + CONFIG.trunkHeight + CONFIG.treeHeight,  // Chính xác đỉnh
+      z: (Math.random()-0.5)*1.5,  // Rất sát nhau
+      c: CONFIG.colors.star, s: 20, isLight: true
+    });
+  }
+
+  // 2. TRÁI TIM (Sửa lại công thức chuẩn)
+  // Sử dụng công thức Parametric Heart Curve
+  for(let i=0; i<CONFIG.particleCount; i++) {
+    const t = Math.random() * Math.PI * 2;
+    
+    // Quan trọng: Phân bố hạt tập trung vào viền (shell) để rõ nét
+    // Math.pow(Math.random(), 0.1) sẽ đẩy các giá trị về gần 1
+    const r = Math.pow(Math.random(), 0.15); 
+    
+    // Công thức tim 2D chuẩn
+    let x = 16 * Math.pow(Math.sin(t), 3);
+    let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+    
+    // Scale to
+    const scale = 12; 
+    x *= scale * r;
+    y *= scale * r;
+
+    // Tạo độ dày Z vừa phải (không quá dày để tránh thành củ khoai)
+    // Độ dày giảm dần về phía đuôi tim
+    const thickness = 30 * r; 
+    let z = (Math.random() - 0.5) * thickness; 
+    
+    // Đẩy tim lên cao
+    y += 120; 
+
+    heartData.push({
+      x: x, y: y, z: z,
+      c: CONFIG.colors.heart, // Đỏ rực
+      s: 5 + Math.random() * 3
+    });
+  }
+}
+
+// --- TẠO TUYẾT RƠI ---
+function generateSnow() {
+  snowData = [];
+  const screenWidth = 500; // Phạm vi X camera
+  const screenHeight = 400; // Phạm vi Y camera
+  
+  for(let i=0; i<snowCount; i++) {
+    const x = (Math.random() - 0.5) * screenWidth;
+    const y = (Math.random() - 0.5) * screenHeight + 350; // Spawn cao phía trên
+    const z = (Math.random() - 0.5) * 300;
+    const speed = 0.5 + Math.random() * 0.5; // Tốc độ rơi
+    
+    snowData.push({
+      x: x, y: y, z: z,
+      c: { r: 0.95, g: 0.95, b: 1.0 }, // Trắng nhẹ xanh
+      s: 2 + Math.random() * 2,
+      speed: speed,
+      initialX: x,
+      initialZ: z,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+// --- THREE.JS SETUP ---
+function initThree() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  // Sương mù tối
+  scene.fog = new THREE.FogExp2(0x1b2949, 0.001);
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 2000);
+  camera.position.set(0, 100, 450); // Camera nhìn thẳng
+  camera.lookAt(0, 80, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  generateTargets();
+  generateSnow();
+
+  const geom = new THREE.BufferGeometry();
+  const totalParticles = CONFIG.particleCount + snowCount;
+  const pos = new Float32Array(totalParticles * 3);
+  const col = new Float32Array(totalParticles * 3);
+  const size = new Float32Array(totalParticles);
+
+  // Init tree/heart data
+  for(let i=0; i<CONFIG.particleCount; i++) {
+    const d = treeData[i % treeData.length];
+    pos[i*3] = d.x; pos[i*3+1] = d.y; pos[i*3+2] = d.z;
+    col[i*3] = d.c.r; col[i*3+1] = d.c.g; col[i*3+2] = d.c.b;
+    size[i] = d.s;
+  }
+
+  // Init snow data
+  for(let i=0; i<snowCount; i++) {
+    const idx = CONFIG.particleCount + i;
+    const d = snowData[i];
+    pos[idx*3] = d.x; pos[idx*3+1] = d.y; pos[idx*3+2] = d.z;
+    col[idx*3] = d.c.r; col[idx*3+1] = d.c.g; col[idx*3+2] = d.c.b;
+    size[idx] = d.s;
+  }
+
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geom.setAttribute('size', new THREE.BufferAttribute(size, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { tex: { value: createGlowTexture() } },
+    vertexShader: `
+      attribute float size; varying vec3 vC;
+      void main() {
+        vC = color;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tex; varying vec3 vC;
+      void main() {
+        vec4 t = texture2D(tex, gl_PointCoord);
+        if(t.a < 0.1) discard;
+        gl_FragColor = vec4(vC, t.a);
+      }
+    `,
+    blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, vertexColors: true
+  });
+
+  particleSystem = new THREE.Points(geom, mat);
+  scene.add(particleSystem);
+  
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+function animate() {
+  if(!isRunning) return;
+  requestAnimationFrame(animate);
+  time += 0.02;
+
+  const positions = particleSystem.geometry.attributes.position.array;
+  const colors = particleSystem.geometry.attributes.color.array;
+  const sizes = particleSystem.geometry.attributes.size.array;
+
+  // Tim đập
+  const beat = handOpen ? 1 + Math.sin(time*5)*0.05 : 1;
+  const lerpVal = 0.06;
+
+  for(let i=0; i<CONFIG.particleCount; i++) {
+    const i3 = i*3;
+    let tx, ty, tz, tr, tg, tb, ts;
+    
+    // Map index cẩn thận
+    const tItem = treeData[i % treeData.length];
+    const hItem = heartData[i % heartData.length];
+
+    if(handOpen) {
+      // HEART MODE
+      tx = hItem.x * beat + handPos.x;
+      ty = hItem.y * beat + handPos.y;
+      tz = hItem.z * beat + handPos.z;
+      tr = hItem.c.r; tg = hItem.c.g; tb = hItem.c.b;
+      ts = hItem.s;
+    } else {
+      // TREE MODE
+      tx = tItem.x + handPos.x;
+      ty = tItem.y + handPos.y;
+      tz = tItem.z + handPos.z;
+      tr = tItem.c.r; tg = tItem.c.g; tb = tItem.c.b;
+      ts = tItem.s;
+      
+      // Nhấp nháy đèn
+      if(tItem.isLight) {
+        const blink = Math.sin(time*3 + i)*0.5 + 0.5;
+        tr *= (0.5 + blink); tg *= (0.5 + blink); tb *= (0.5 + blink);
+        ts *= (0.8 + blink*0.4);
+      }
+    }
+
+    positions[i3] += (tx - positions[i3]) * lerpVal;
+    positions[i3+1] += (ty - positions[i3+1]) * lerpVal;
+    positions[i3+2] += (tz - positions[i3+2]) * lerpVal;
+    
+    colors[i3] += (tr - colors[i3]) * lerpVal;
+    colors[i3+1] += (tg - colors[i3+1]) * lerpVal;
+    colors[i3+2] += (tb - colors[i3+2]) * lerpVal;
+    
+    sizes[i] += (ts - sizes[i]) * lerpVal;
+  }
+
+  // Update snow particles
+  for(let i=0; i<snowCount; i++) {
+    const idx = CONFIG.particleCount + i;
+    const i3 = idx * 3;
+    const s = snowData[i];
+    
+    // Tuyết rơi xuống (chuyển động Y giảm)
+    s.y -= s.speed;
+    
+    // Chuyển động sóng ngang (lắc lư)
+    s.x = s.initialX + Math.sin(time * 2 + s.phase) * 20;
+    s.z = s.initialZ + Math.cos(time * 1.5 + s.phase) * 20;
+    
+    // Khi tuyết rơi xuống dưới màn hình, reset lên trên
+    if(s.y < -300) {
+      s.y = 350;
+    }
+    
+    positions[i3] = s.x;
+    positions[i3+1] = s.y;
+    positions[i3+2] = s.z;
+    
+    colors[i3] = s.c.r;
+    colors[i3+1] = s.c.g;
+    colors[i3+2] = s.c.b;
+    
+    sizes[idx] = s.s;
+  }
+
+  particleSystem.geometry.attributes.position.needsUpdate = true;
+  particleSystem.geometry.attributes.color.needsUpdate = true;
+  particleSystem.geometry.attributes.size.needsUpdate = true;
+  
+  // Xoay nhẹ
+  particleSystem.rotation.y = Math.sin(time*0.1)*0.15;
+  
+  renderer.render(scene, camera);
+}
+
+// --- AI SETUP ---
+async function startApp() {
+  document.getElementById('start-screen').style.display = 'none';
+  statusMsg.innerText = "Đang mở mắt thần (Camera)...";
+  
+  initThree();
+  isRunning = true; 
+  animate();
+
+  const video = document.getElementById('input-video');
+  const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  
+  hands.onResults(results => {
+    if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const lm = results.multiHandLandmarks[0];
+      
+      // Check mở tay
+      const tips = [8,12,16,20]; const pips = [6,10,14,18];
+      let open = 0;
+      tips.forEach((t,i) => { if(lm[t].y < lm[pips[i]].y) open++; });
+      
+      const isOpen = open >= 3;
+      if(isOpen !== handOpen) {
+        handOpen = isOpen;
+        statusMsg.innerText = handOpen ? "❤️ Yêu em ❤️" : "🎄 MERRY CHRISTMAS 🎄";
+        statusMsg.style.color = handOpen ? "#ff0000" : "#00ffcc";
+      }
+      
+      // Di chuyển theo tay
+      const x = (1 - lm[0].x - 0.5) * 350;
+      const y = (0.5 - lm[0].y) * 250;
+      handPos.x += (x - handPos.x) * 0.1;
+      handPos.y += (y - handPos.y) * 0.1;
+    }
+  });
+
+  const camera = new Camera(video, {
+    onFrame: async () => { await hands.send({image: video}); },
+    width: 480, height: 360
+  });
+  
+  await camera.start();
+  statusMsg.innerText = "Xong! Nắm/Xòe tay để thử nào";
+}
+
+document.getElementById('start-btn').addEventListener('click', startApp);
+</script>
+</body>
+</html>
