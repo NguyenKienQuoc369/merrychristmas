@@ -32,8 +32,7 @@
 <body>
 
 <div id="start-screen">
-  <h1 style="text-shadow: 0 0 20px gold;">🎄 GIÁNG SINH & TÌNH YÊU ❤️</h1>
-  <p>Đã sửa dáng trái tim chuẩn & nâng cây thông</p>
+  <h1 style="text-shadow: 0 0 20px gold;">🎄 Chúc mừng giáng sinh ❤️</h1>
   <button id="start-btn">BẮT ĐẦU</button>
 </div>
 
@@ -87,7 +86,6 @@ function createGlowTexture() {
 function generateTargets() {
   treeData = []; heartData = [];
   
-  // 1. CÂY THÔNG (Đã nâng cao vị trí)
   const treeStartY = -100; // Đẩy lên cao hơn (bản cũ là -160)
 
   // Gốc cây
@@ -441,7 +439,7 @@ async function startApp() {
       const isOpen = open >= 3;
       if(isOpen !== handOpen) {
         handOpen = isOpen;
-        statusMsg.innerText = handOpen ? "❤️ Yêu em ❤️" : "🎄 MERRY CHRISTMAS 🎄";
+        statusMsg.innerText = handOpen ? "Love you" : "🎄 MERRY CHRISTMAS 🎄";
         statusMsg.style.color = handOpen ? "#ff0000" : "#00ffcc";
       }
       
